@@ -83,7 +83,7 @@ function initClient() {
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
             ],
-            executablePath: '/usr/bin/chromium-browser'
+            executablePath: '/usr/bin/chromium'
         }
     });
 
