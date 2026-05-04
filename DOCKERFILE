@@ -1,6 +1,6 @@
 FROM node:20-bookworm-slim
 
-# Instalar Chromium y todas las dependencias
+# Instalar Chromium
 RUN apt-get update && apt-get install -y \
     chromium \
     ca-certificates \
@@ -31,25 +31,34 @@ WORKDIR /app
 # Crear directorio para sesiones
 RUN mkdir -p /app/instances
 
-# Copiar archivos de Node
+# Crear script de override para puppeteer
+RUN mkdir -p /usr/local/lib/node_modules/puppeteer && \
+    echo "module.exports = { launch: () => { throw new Error('Override') } }" > /usr/local/lib/node_modules/puppeteer/index.js
+
+# Copiar package.json e instalar
 COPY package*.json ./
 RUN npm install --production
+
+# SOBREESCRIBIR el puppeteer instalado con un wrapper que use Chromium del sistema
+RUN node -e "const fs = require('fs'); const path = require('path'); \
+    const puppeteerPath = path.dirname(require.resolve('puppeteer')); \
+    const wrapper = ` \
+const chromiumPath = '/usr/bin/chromium';\
+const puppeteer = require('puppeteer-core');\
+module.exports = puppeteer;\
+module.exports.launch = (opts = {}) => {\
+    opts.executablePath = chromiumPath;\
+    opts.args = [...(opts.args || []), '--no-sandbox', '--disable-setuid-sandbox'];\
+    return puppeteer.launch(opts);\
+};\
+`; \
+    fs.writeFileSync(path.join(puppeteerPath, 'index.js'), wrapper);"
 
 # Copiar código fuente
 COPY server.js .
 
-# Variables de entorno MÚLTIPLES para asegurar que use Chromium del sistema
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-ENV CHROME_PATH=/usr/bin/chromium
-ENV CHROMIUM_PATH=/usr/bin/chromium
-
-# También deshabilitar la caché de Puppeteer
-ENV PUPPETEER_CACHE_DIR=/tmp/puppeteer-cache
-
-# Verificar que Chromium existe y es ejecutable
-RUN test -f /usr/bin/chromium && echo "✅ Chromium encontrado en /usr/bin/chromium" || echo "❌ Chromium NO encontrado"
-RUN ldd /usr/bin/chromium | grep "not found" || echo "✅ Todas las librerías de Chromium están presentes"
+# Verificar Chromium
+RUN test -f /usr/bin/chromium && echo "✅ Chromium listo"
 
 EXPOSE 8080
 
