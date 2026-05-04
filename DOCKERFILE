@@ -1,48 +1,35 @@
-FROM node:18-slim
+FROM node:20-alpine
 
-# Instalar dependencias del sistema para Puppeteer
-RUN apt-get update && apt-get install -y \
+# Instalar Chromium y dependencias necesarias
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
     ca-certificates \
-    fonts-liberation \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libdrm2 \
-    libgbm1 \
-    libglib2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libxss1 \
-    libxtst6 \
-    xdg-utils \
-    && rm -rf /var/lib/apt/lists/*
+    ttf-freefont \
+    && rm -rf /var/cache/apk/*
 
 WORKDIR /app
 
 # Crear directorio para sesiones
 RUN mkdir -p /app/instances
 
-# Copiar archivos de Node
+# Copiar y instalar dependencias
 COPY package*.json ./
-RUN npm install
-
-# Instalar puppeteer explícitamente (esto descargará Chrome automáticamente)
-RUN npm install puppeteer --save
+RUN npm install --production
 
 # Copiar código fuente
 COPY server.js .
 
-# Configurar Puppeteer para usar Chrome descargado
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
+# Configurar Puppeteer para usar Chromium del sistema
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
+# Puerto que Railway espera
 EXPOSE 8080
+
+# Verificar que Chromium existe (debug)
+RUN test -f /usr/bin/chromium-browser && echo "✅ Chromium encontrado" || echo "❌ Chromium NO encontrado"
 
 CMD ["node", "server.js"]

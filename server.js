@@ -8,7 +8,7 @@ const app = express();
 app.use(express.json({ limit: '50mb' }));
 
 const API_KEY = process.env.AUTHENTICATION_API_KEY || 'PM5-SuperSecret-Key-2026';
-const PORT = process.env.SERVER_PORT || 8080;
+const PORT = process.env.PORT || process.env.SERVER_PORT || 8080;
 
 let client = null;
 let qrCodeData = null;
@@ -60,7 +60,7 @@ function initClient() {
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
-            ],
+            ]
         }
     });
 
@@ -115,16 +115,6 @@ app.get('/status', authMiddleware, (req, res) => {
     });
 });
 
-app.get('/check-number/:number', authMiddleware, async (req, res) => {
-    try {
-        const formatted = formatPhone(req.params.number);
-        const registered = await client.getNumberId(formatted);
-        res.json({ success: true, hasWhatsApp: !!registered, number: formatted });
-    } catch (error) {
-        res.json({ success: true, hasWhatsApp: false });
-    }
-});
-
 app.post('/send-text', authMiddleware, async (req, res) => {
     try {
         const { number, text } = req.body;
@@ -132,33 +122,60 @@ app.post('/send-text', authMiddleware, async (req, res) => {
         if (!isConnected) return res.status(503).json({ error: 'WhatsApp no conectado' });
 
         const chatId = await getChatId(number);
-        console.log('📤 Enviando a:', chatId);
-        
         const result = await client.sendMessage(chatId, text);
-        console.log('✅ Enviado');
         
         res.json({ success: true, id: result.id?._serialized || result.id });
     } catch (error) {
-        console.error('❌ Error:', error.message);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/send-document', authMiddleware, async (req, res) => {
+    try {
+        const { number, document, fileName, caption } = req.body;
+
+        if (!number || !document) {
+            return res.status(400).json({ error: 'number y document son requeridos' });
+        }
+
+        if (!isConnected) {
+            return res.status(503).json({ error: 'WhatsApp no conectado' });
+        }
+
+        let base64Data = document;
+        if (base64Data.includes(',')) {
+            base64Data = base64Data.split(',')[1];
+        }
+
+        const media = new MessageMedia(
+            'application/pdf',
+            base64Data,
+            fileName || 'documento.pdf'
+        );
+
+        const chatId = await getChatId(number);
+        const result = await client.sendMessage(chatId, media, {
+            caption: caption || ''
+        });
+
+        res.json({
+            success: true,
+            message: 'Documento enviado',
+            id: result.id?._serialized || result.id
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
 });
 
 app.post('/logout', authMiddleware, async (req, res) => {
     try {
         if (client) {
-            try {
-                await client.logout();
-            } catch (e) {
-                console.log('Logout normal falló');
-            }
-            
-            try {
-                await client.destroy();
-            } catch (e) {
-                console.log('Destroy falló');
-            }
-            
+            try { await client.logout(); } catch (e) {}
+            try { await client.destroy(); } catch (e) {}
             client = null;
         }
         
@@ -166,13 +183,10 @@ app.post('/logout', authMiddleware, async (req, res) => {
         qrCodeData = null;
         clientInfo = null;
         
-        setTimeout(() => {
-            initClient();
-        }, 3000);
+        setTimeout(() => initClient(), 3000);
         
         res.json({ success: true, message: 'Sesión cerrada' });
     } catch (error) {
-        console.error('Error en logout:', error.message);
         client = null;
         isConnected = false;
         setTimeout(() => initClient(), 3000);
@@ -189,58 +203,8 @@ app.delete('/logout', authMiddleware, async (req, res) => {
     isConnected = false;
     qrCodeData = null;
     clientInfo = null;
-    
     setTimeout(() => initClient(), 3000);
-    
     res.json({ success: true, message: 'Sesión cerrada' });
-});
-
-app.post('/send-document', authMiddleware, async (req, res) => {
-    try {
-        const { number, document, fileName, caption } = req.body;
-
-        if (!number || !document) {
-            return res.status(400).json({ error: 'number y document son requeridos' });
-        }
-
-        if (!isConnected) {
-            return res.status(503).json({ error: 'WhatsApp no conectado' });
-        }
-
-        const formatted = formatPhone(number);
-        console.log('📎 Enviando documento a:', formatted);
-
-        let base64Data = document;
-        if (base64Data.includes(',')) {
-            base64Data = base64Data.split(',')[1];
-        }
-
-        const media = new MessageMedia(
-            'application/pdf',
-            base64Data,
-            fileName || 'documento.pdf'
-        );
-
-        const chatId = await getChatId(number);
-        
-        const result = await client.sendMessage(chatId, media, {
-            caption: caption || ''
-        });
-
-        console.log('✅ Documento enviado a:', formatted);
-
-        res.json({
-            success: true,
-            message: 'Documento enviado',
-            id: result.id?._serialized || result.id
-        });
-    } catch (error) {
-        console.error('❌ Error enviando documento:', error.message);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
