@@ -1,17 +1,26 @@
 FROM node:20-bullseye
 
-# Instalar TODAS las dependencias que Chromium/Puppeteer necesita
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libnss3 \
-    libnspr4 \
-    libgconf-2-4 \
-    libappindicator1 \
+# Instalar Chromium del sistema y todas sus dependencias
+RUN apt-get update && apt-get install -y \
+    chromium \
+    chromium-sandbox \
+    fonts-liberation \
     libappindicator3-1 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libexpat1 \
+    libgbm1 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
     libx11-6 \
-    libxss1 \
-    libxtst6 \
+    libx11-xcb1 \
+    libxcb1 \
     libxcomposite1 \
     libxcursor1 \
     libxdamage1 \
@@ -20,19 +29,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxi6 \
     libxrandr2 \
     libxrender1 \
-    fonts-liberation \
-    libasound2 \
-    libpangocairo-1.0-0 \
-    libpango-1.0-0 \
-    libglib2.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libexpat1 \
-    libgbm1 \
-    libgtk-3-0 \
+    libxss1 \
+    libxtst6 \
     ca-certificates \
-    wget \
+    fonts-noto-color-emoji \
     && rm -rf /var/lib/apt/lists/*
+
+# Decirle a Puppeteer que use Chromium del sistema
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 WORKDIR /app
 
