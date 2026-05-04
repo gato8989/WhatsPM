@@ -4,6 +4,12 @@ const qrcode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 
+// ============ FORZAR USO DE CHROMIUM DEL SISTEMA ============
+process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true';
+process.env.PUPPETEER_EXECUTABLE_PATH = '/usr/bin/chromium';
+process.env.CHROME_PATH = '/usr/bin/chromium';
+// ============================================================
+
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 

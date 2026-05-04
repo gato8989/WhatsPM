@@ -1,6 +1,6 @@
 FROM node:20-bookworm-slim
 
-# Instalar Chromium y todas las dependencias necesarias
+# Instalar Chromium y todas las dependencias
 RUN apt-get update && apt-get install -y \
     chromium \
     ca-certificates \
@@ -38,12 +38,18 @@ RUN npm install --production
 # Copiar código fuente
 COPY server.js .
 
-# Configurar Puppeteer para usar Chromium del sistema
+# Variables de entorno MÚLTIPLES para asegurar que use Chromium del sistema
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV CHROME_PATH=/usr/bin/chromium
+ENV CHROMIUM_PATH=/usr/bin/chromium
 
-# Verificar que Chromium existe
+# También deshabilitar la caché de Puppeteer
+ENV PUPPETEER_CACHE_DIR=/tmp/puppeteer-cache
+
+# Verificar que Chromium existe y es ejecutable
 RUN test -f /usr/bin/chromium && echo "✅ Chromium encontrado en /usr/bin/chromium" || echo "❌ Chromium NO encontrado"
+RUN ldd /usr/bin/chromium | grep "not found" || echo "✅ Todas las librerías de Chromium están presentes"
 
 EXPOSE 8080
 
