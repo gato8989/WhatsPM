@@ -1,29 +1,14 @@
 FROM node:20-bookworm-slim
 
-# Instalar Chromium
+# Instalar Google Chrome estable
 RUN apt-get update && apt-get install -y \
-    chromium \
+    wget \
+    gnupg \
     ca-certificates \
-    fonts-liberation \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libdrm2 \
-    libgbm1 \
-    libglib2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libxss1 \
-    libxtst6 \
-    xdg-utils \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -31,34 +16,34 @@ WORKDIR /app
 # Crear directorio para sesiones
 RUN mkdir -p /app/instances
 
-# Crear script de override para puppeteer
-RUN mkdir -p /usr/local/lib/node_modules/puppeteer && \
-    echo "module.exports = { launch: () => { throw new Error('Override') } }" > /usr/local/lib/node_modules/puppeteer/index.js
-
-# Copiar package.json e instalar
+# Copiar package.json
 COPY package*.json ./
+
+# Instalar dependencias PERO forzar que use Chrome del sistema
 RUN npm install --production
 
-# SOBREESCRIBIR el puppeteer instalado con un wrapper que use Chromium del sistema
-RUN node -e "const fs = require('fs'); const path = require('path'); \
-    const puppeteerPath = path.dirname(require.resolve('puppeteer')); \
-    const wrapper = ` \
-const chromiumPath = '/usr/bin/chromium';\
-const puppeteer = require('puppeteer-core');\
-module.exports = puppeteer;\
-module.exports.launch = (opts = {}) => {\
-    opts.executablePath = chromiumPath;\
-    opts.args = [...(opts.args || []), '--no-sandbox', '--disable-setuid-sandbox'];\
-    return puppeteer.launch(opts);\
-};\
-`; \
-    fs.writeFileSync(path.join(puppeteerPath, 'index.js'), wrapper);"
+# PARCHAR puppeteer para que use Chrome del sistema
+RUN node -e "const fs = require('fs'); \
+    const path = require('path'); \
+    try { \
+        const puppeteerPath = path.dirname(require.resolve('puppeteer')); \
+        const indexPath = path.join(puppeteerPath, 'index.js'); \
+        let content = fs.readFileSync(indexPath, 'utf8'); \
+        content = content.replace(/executablePath[^,]+/g, 'executablePath: \"/usr/bin/google-chrome-stable\"'); \
+        fs.writeFileSync(indexPath, content); \
+        console.log('✅ Puppeteer parcheado para usar Chrome del sistema'); \
+    } catch(e) { console.error('Error parcheando:', e.message); }"
 
-# Copiar código fuente
+# Copiar código
 COPY server.js .
 
-# Verificar Chromium
-RUN test -f /usr/bin/chromium && echo "✅ Chromium listo"
+# Variables de entorno
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+ENV CHROME_PATH=/usr/bin/google-chrome-stable
+
+# Verificar Chrome
+RUN test -f /usr/bin/google-chrome-stable && echo "✅ Chrome listo" || echo "❌ Chrome no encontrado"
 
 EXPOSE 8080
 
