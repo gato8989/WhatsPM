@@ -1,9 +1,7 @@
 FROM node:18-slim
 
-# Instalar Google Chrome estable y dependencias
+# Instalar dependencias del sistema para Puppeteer
 RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
     ca-certificates \
     fonts-liberation \
     libasound2 \
@@ -25,10 +23,6 @@ RUN apt-get update && apt-get install -y \
     libxss1 \
     libxtst6 \
     xdg-utils \
-    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -40,12 +34,14 @@ RUN mkdir -p /app/instances
 COPY package*.json ./
 RUN npm install
 
+# Instalar puppeteer explícitamente (esto descargará Chrome automáticamente)
+RUN npm install puppeteer --save
+
 # Copiar código fuente
 COPY server.js .
 
-# Variables de entorno para Puppeteer
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+# Configurar Puppeteer para usar Chrome descargado
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
 
 EXPOSE 8080
 
