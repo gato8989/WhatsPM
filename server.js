@@ -1,27 +1,38 @@
 const express = require('express');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
-
-// FORZAR Chrome del sistema ANTES de cualquier otra cosa
-process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true';
-process.env.PUPPETEER_EXECUTABLE_PATH = '/usr/bin/google-chrome-stable';
-process.env.CHROME_PATH = '/usr/bin/google-chrome-stable';
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 
 const API_KEY = process.env.AUTHENTICATION_API_KEY || 'PM5-SuperSecret-Key-2026';
-const PORT = process.env.PORT || process.env.SERVER_PORT || 8080;
+const PORT = process.env.SERVER_PORT || 8080;
 
 let client = null;
 let qrCodeData = null;
 let isConnected = false;
 let clientInfo = null;
 
-console.log('🔧 Configuración de Chrome:', {
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
-    skipDownload: process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
-});
+// Limpiar lockfiles de Chromium al iniciar
+function cleanChromiumLocks() {
+    const authPath = '/app/instances/auth';
+    if (fs.existsSync(authPath)) {
+        const files = fs.readdirSync(authPath, { recursive: true });
+        files.forEach(file => {
+            if (file.includes('SingletonLock') || file.includes('SingletonCookie') || file.includes('SingletonSocket')) {
+                const lockFile = path.join(authPath, file);
+                try {
+                    fs.unlinkSync(lockFile);
+                    console.log('🧹 Limpiado lockfile:', lockFile);
+                } catch (e) {
+                    // Ignorar errores
+                }
+            }
+        });
+    }
+}
 
 function authMiddleware(req, res, next) {
     const apiKey = req.headers['apikey'] || req.headers['authorization']?.replace('Bearer ', '');
@@ -41,29 +52,38 @@ function formatPhone(number) {
 
 async function getChatId(number) {
     const formatted = formatPhone(number);
+    
     try {
         const registered = await client.getNumberId(formatted);
-        if (registered) return registered._serialized;
+        if (registered) {
+            return registered._serialized;
+        }
     } catch (e) {}
+    
     return formatted + '@c.us';
 }
 
 function initClient() {
     if (client) return;
+
     console.log('🚀 Inicializando cliente de WhatsApp...');
+    
+    // Limpiar locks antes de iniciar
+    cleanChromiumLocks();
 
     client = new Client({
-        authStrategy: new LocalAuth({ dataPath: '/app/instances' }),
+        authStrategy: new LocalAuth({
+            dataPath: '/app/instances'
+        }),
         puppeteer: {
             headless: true,
-            executablePath: '/usr/bin/google-chrome-stable', // FORCE explícito
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
-                '--disable-software-rasterizer'
-            ]
+            ],
+            executablePath: '/usr/bin/chromium-browser'
         }
     });
 
@@ -73,7 +93,7 @@ function initClient() {
         isConnected = false;
     });
 
-    client.on('ready', () => {
+    client.on('ready', async () => {
         console.log('✅ WhatsApp conectado');
         isConnected = true;
         qrCodeData = null;
@@ -86,69 +106,181 @@ function initClient() {
         isConnected = false;
         clientInfo = null;
         client = null;
+        cleanChromiumLocks();
         setTimeout(() => initClient(), 10000);
     });
 
     client.initialize().catch(err => {
         console.error('❌ Error inicializando:', err.message);
         client = null;
+        cleanChromiumLocks();
         setTimeout(() => initClient(), 10000);
     });
 }
 
+// Limpiar locks al inicio
+cleanChromiumLocks();
 initClient();
 
-// Endpoints
-app.get('/', authMiddleware, (req, res) => res.json({ status: 'running', connected: isConnected }));
+// ==================== ENDPOINTS ====================
 
-app.get('/qr', authMiddleware, async (req, res) => {
-    if (isConnected) return res.json({ connected: true, number: clientInfo?.wid?.user });
-    return res.json({ connected: false, qrcode: qrCodeData });
+app.get('/', authMiddleware, (req, res) => {
+    res.json({ status: 'running', connected: isConnected });
 });
 
-app.get('/status', authMiddleware, (req, res) => res.json({ connected: isConnected, number: clientInfo?.wid?.user }));
+app.get('/qr', authMiddleware, async (req, res) => {
+    if (isConnected) {
+        return res.json({ connected: true, number: clientInfo?.wid?.user || null });
+    }
+    return res.json({ connected: false, qrcode: qrCodeData || null });
+});
+
+app.get('/status', authMiddleware, (req, res) => {
+    res.json({
+        connected: isConnected,
+        number: clientInfo?.wid?.user || null,
+    });
+});
+
+app.get('/check-number/:number', authMiddleware, async (req, res) => {
+    try {
+        const formatted = formatPhone(req.params.number);
+        const registered = await client.getNumberId(formatted);
+        res.json({ success: true, hasWhatsApp: !!registered, number: formatted });
+    } catch (error) {
+        res.json({ success: true, hasWhatsApp: false });
+    }
+});
 
 app.post('/send-text', authMiddleware, async (req, res) => {
     try {
         const { number, text } = req.body;
         if (!number || !text) return res.status(400).json({ error: 'number y text son requeridos' });
         if (!isConnected) return res.status(503).json({ error: 'WhatsApp no conectado' });
+
         const chatId = await getChatId(number);
-        await client.sendMessage(chatId, text);
-        res.json({ success: true });
+        console.log('📤 Enviando a:', chatId);
+        
+        const result = await client.sendMessage(chatId, text);
+        console.log('✅ Enviado');
+        
+        res.json({ success: true, id: result.id?._serialized || result.id });
     } catch (error) {
+        console.error('❌ Error:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-app.post('/send-document', authMiddleware, async (req, res) => {
-    try {
-        const { number, document, fileName, caption } = req.body;
-        if (!number || !document) return res.status(400).json({ error: 'number y document son requeridos' });
-        if (!isConnected) return res.status(503).json({ error: 'WhatsApp no conectado' });
-        
-        let base64Data = document;
-        if (base64Data.includes(',')) base64Data = base64Data.split(',')[1];
-        
-        const media = new MessageMedia('application/pdf', base64Data, fileName || 'documento.pdf');
-        const chatId = await getChatId(number);
-        await client.sendMessage(chatId, media, { caption: caption || '' });
-        res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
 
+// Logout - CORREGIDO (reinicia el cliente después)
 app.post('/logout', authMiddleware, async (req, res) => {
+    try {
+        if (client) {
+            try {
+                await client.logout();
+            } catch (e) {
+                console.log('Logout normal falló, intentando destroy...');
+            }
+            
+            try {
+                await client.destroy();
+            } catch (e) {
+                console.log('Destroy falló...');
+            }
+            
+            client = null;
+        }
+        
+        isConnected = false;
+        qrCodeData = null;
+        clientInfo = null;
+        
+        // Reiniciar el cliente después de 3 segundos
+        console.log('🔄 Reiniciando cliente en 3 segundos...');
+        setTimeout(() => {
+            console.log('🚀 Creando nuevo cliente...');
+            initClient();
+        }, 3000);
+        
+        res.json({ success: true, message: 'Sesión cerrada. Se generará nuevo QR.' });
+    } catch (error) {
+        console.error('Error en logout:', error.message);
+        client = null;
+        isConnected = false;
+        qrCodeData = null;
+        setTimeout(() => initClient(), 3000);
+        res.json({ success: true, message: 'Sesión cerrada (force)' });
+    }
+});
+
+// También DELETE
+app.delete('/logout', authMiddleware, async (req, res) => {
     if (client) {
-        try { await client.logout(); } catch(e) {}
-        try { await client.destroy(); } catch(e) {}
+        try { await client.logout(); } catch (e) {}
+        try { await client.destroy(); } catch (e) {}
         client = null;
     }
     isConnected = false;
     qrCodeData = null;
-    setTimeout(initClient, 3000);
+    clientInfo = null;
+    
+    setTimeout(() => initClient(), 3000);
+    
     res.json({ success: true, message: 'Sesión cerrada' });
+});
+
+// Enviar documento - CORREGIDO
+app.post('/send-document', authMiddleware, async (req, res) => {
+    try {
+        const { number, document, fileName, caption } = req.body;
+
+        if (!number || !document) {
+            return res.status(400).json({ error: 'number y document son requeridos' });
+        }
+
+        if (!isConnected) {
+            return res.status(503).json({ error: 'WhatsApp no conectado' });
+        }
+
+        const formatted = formatPhone(number);
+        console.log('📎 Enviando documento a:', formatted);
+        console.log('📎 Document base64 length:', document.length);
+
+        // Asegurarse de que el documento sea base64 válido
+        let base64Data = document;
+        // Si viene con data:application/pdf;base64, limpiarlo
+        if (base64Data.includes(',')) {
+            base64Data = base64Data.split(',')[1];
+        }
+
+        const media = new MessageMedia(
+            'application/pdf',
+            base64Data,
+            fileName || 'documento.pdf'
+        );
+
+        const chatId = await getChatId(number);
+        console.log('📋 Chat ID:', chatId);
+        
+        const result = await client.sendMessage(chatId, media, {
+            caption: caption || ''
+        });
+
+        console.log('✅ Documento enviado a:', formatted);
+
+        res.json({
+            success: true,
+            message: 'Documento enviado',
+            id: result.id?._serialized || result.id
+        });
+    } catch (error) {
+        console.error('❌ Error enviando documento:', error.message);
+        console.error('❌ Stack:', error.stack);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
 });
 
 app.listen(PORT, '0.0.0.0', () => {

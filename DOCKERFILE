@@ -1,49 +1,19 @@
-FROM node:20-bookworm-slim
+FROM node:20-alpine
 
-# Instalar Google Chrome estable
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    ca-certificates \
-    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
-    && rm -rf /var/lib/apt/lists/*
+# Instalar dependencias para WhatsApp Web.js
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
+
+# Decirle a Puppeteer que use Chromium del sistema
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 WORKDIR /app
 
-# Crear directorio para sesiones
-RUN mkdir -p /app/instances
+# Copiar archivos de la app
+COPY package.json .
+RUN npm install
 
-# Copiar package.json
-COPY package*.json ./
-
-# Instalar dependencias PERO forzar que use Chrome del sistema
-RUN npm install --production
-
-# PARCHAR puppeteer para que use Chrome del sistema
-RUN node -e "const fs = require('fs'); \
-    const path = require('path'); \
-    try { \
-        const puppeteerPath = path.dirname(require.resolve('puppeteer')); \
-        const indexPath = path.join(puppeteerPath, 'index.js'); \
-        let content = fs.readFileSync(indexPath, 'utf8'); \
-        content = content.replace(/executablePath[^,]+/g, 'executablePath: \"/usr/bin/google-chrome-stable\"'); \
-        fs.writeFileSync(indexPath, content); \
-        console.log('✅ Puppeteer parcheado para usar Chrome del sistema'); \
-    } catch(e) { console.error('Error parcheando:', e.message); }"
-
-# Copiar código
 COPY server.js .
-
-# Variables de entorno
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
-ENV CHROME_PATH=/usr/bin/google-chrome-stable
-
-# Verificar Chrome
-RUN test -f /usr/bin/google-chrome-stable && echo "✅ Chrome listo" || echo "❌ Chrome no encontrado"
 
 EXPOSE 8080
 
