@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:20-bullseye
 
 # Instalar TODAS las dependencias que Chromium/Puppeteer necesita
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgconf-2-4 \
     libappindicator1 \
     libappindicator3-1 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
     libx11-6 \
     libxss1 \
     libxtst6 \
