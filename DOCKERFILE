@@ -1,30 +1,15 @@
 FROM node:20-slim
 
-# Establecer variables ANTES de instalar dependencias
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
-
-# Instalar Chromium y dependencias
+# Instalar TODAS las dependencias que Chromium/Puppeteer necesita
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium-browser \
-    ca-certificates \
-    fonts-liberation \
-    libappindicator3-1 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libexpat1 \
-    libgbm1 \
-    libglib2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
     libnss3 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
+    libnspr4 \
+    libgconf-2-4 \
+    libappindicator1 \
+    libappindicator3-1 \
     libx11-6 \
-    libx11-xcb1 \
-    libxcb1 \
+    libxss1 \
+    libxtst6 \
     libxcomposite1 \
     libxcursor1 \
     libxdamage1 \
@@ -33,14 +18,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxi6 \
     libxrandr2 \
     libxrender1 \
-    libxss1 \
-    libxtst6 \
-    xdg-utils \
+    fonts-liberation \
+    libasound2 \
+    libpangocairo-1.0-0 \
+    libpango-1.0-0 \
+    libglib2.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libexpat1 \
+    libgbm1 \
+    libgtk-3-0 \
+    ca-certificates \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copiar archivos de la app
+# Copiar y instalar dependencias Node
 COPY package.json .
 RUN npm install
 
