@@ -1,8 +1,8 @@
 services:
   whatsapp-api:
     build:
-      context: ./docker/whatsapp-api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: DOCKERFILE
     container_name: whatsapp-api
     restart: unless-stopped
     ports:
