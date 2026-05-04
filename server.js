@@ -61,7 +61,7 @@ function initClient() {
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
             ],
-            executablePath: '/usr/bin/chromium'  // ← LÍNEA CLAVE
+            executablePath: '/usr/bin/google-chrome-stable'
         }
     });
 
