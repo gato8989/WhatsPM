@@ -20,7 +20,10 @@ RUN apk add --no-cache \
     libxss \
     libxtst \
     glib \
-    alsa-lib
+    libglib \
+    alsa-lib \
+    dbus \
+    cups
 
 # Decirle a Puppeteer que use Chromium del sistema
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
